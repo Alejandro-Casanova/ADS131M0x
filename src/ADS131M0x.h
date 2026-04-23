@@ -79,8 +79,8 @@ struct adcOutput
 #define REG_CLOCK 0x03
 #define REG_GAIN 0x04
 #define REG_CFG 0x06
-#define THRSHLD_MSB 0x07
-#define THRSHLD_LSB 0x08
+#define REG_THRSHLD_MSB 0x07
+#define REG_THRSHLD_LSB 0x08
 
 // Registers Channel 0 Specific
 #define REG_CH0_CFG 0x09
