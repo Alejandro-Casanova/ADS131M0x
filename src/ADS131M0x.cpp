@@ -169,7 +169,7 @@ void ADS131M0x::writeRegisterMasked(uint8_t address, uint16_t value, uint16_t ma
   // Change the mask bit by bit (it remains 1 in the bits that must not be touched and 0 in the bits to be modified)
   // An AND is performed with the current content of the record. "0" remain in the part to be modified
   register_contents = register_contents & ~mask;
- // OR is made with the value to load in the registry. value must be in the correct position (shitf)
+ // OR is made with the value to load in the registry. value must be in the correct position (shift)
   register_contents = register_contents | value;
   writeRegister(address, register_contents);
 }
