@@ -294,6 +294,9 @@ private:
   void writeRegisterMasked(uint8_t address, uint16_t value, uint16_t mask);
   uint16_t readRegister(uint8_t address);
 
+  void startSPI();
+  void endSPI();
+
   uint8_t csPin;
   uint8_t drdyPin;
  

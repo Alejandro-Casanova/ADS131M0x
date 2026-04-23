@@ -43,8 +43,7 @@ uint8_t ADS131M0x::writeRegister(uint8_t address, uint16_t value)
   uint8_t bytesRcv;
   uint16_t cmd = 0;
 
-  digitalWrite(csPin, LOW);
-  delayMicroseconds(1);
+  this->startSPI();
 
   cmd = (CMD_WRITE_REG) | (address << 7) | 0;
 
@@ -87,8 +86,8 @@ uint8_t ADS131M0x::writeRegister(uint8_t address, uint16_t value)
   spiPort->transfer16(0x0000);
   spiPort->transfer(0x00);
 #endif
-  delayMicroseconds(1);
-  digitalWrite(csPin, HIGH);
+
+  this->endSPI();
 
   addressRcv = (res & REGMASK_CMD_READ_REG_ADDRESS) >> 7;
   bytesRcv = (res & REGMASK_CMD_READ_REG_BYTES);
@@ -113,8 +112,7 @@ uint16_t ADS131M0x::readRegister(uint8_t address)
 
   cmd = CMD_READ_REG | (address << 7 | 0);
 
-  digitalWrite(csPin, LOW);
-  delayMicroseconds(1);
+  this->startSPI();
 
   spiPort->transfer16(cmd);
   spiPort->transfer(0x00);
@@ -152,8 +150,9 @@ uint16_t ADS131M0x::readRegister(uint8_t address)
   spiPort->transfer16(0x0000);
   spiPort->transfer(0x00);
 #endif
-  delayMicroseconds(1);
-  digitalWrite(csPin, HIGH);
+
+  this->endSPI();
+
   return data;
 }
 
@@ -177,7 +176,25 @@ void ADS131M0x::writeRegisterMasked(uint8_t address, uint16_t value, uint16_t ma
   writeRegister(address, register_contents);
 }
 
-/// @brief Hardware reset (reset low activ) 
+void ADS131M0x::startSPI()
+{
+   spiPort->beginTransaction(SPISettings(spiClockSpeed, MSBFIRST, SPI_MODE1));
+   digitalWrite(csPin, LOW);
+#ifndef NO_CS_DELAY
+   delayMicroseconds(1);
+#endif
+}
+
+void ADS131M0x::endSPI()
+{
+   digitalWrite(csPin, HIGH);
+#ifndef NO_CS_DELAY
+   delayMicroseconds(1);
+#endif
+   spiPort->endTransaction();
+}
+
+/// @brief Hardware reset (reset low active) 
 /// @param reset_pin 
 void ADS131M0x::reset(uint8_t reset_pin)
 {
@@ -578,7 +595,7 @@ int32_t ADS131M0x::readfastCh0(void)
   int32_t aux;
   adcOutput res;
 
-  digitalWrite(csPin, LOW);
+  this->startSPI();
   //NOP();
   x = spiPort->transfer(0x00);
   x2 = spiPort->transfer(0x00);
@@ -625,7 +642,7 @@ int32_t ADS131M0x::readfastCh0(void)
 
   //delay(1);
   //NOP();
-  digitalWrite(csPin, HIGH);
+  this->endSPI();
 
   return val32Ch0;
 }
@@ -638,10 +655,7 @@ bool ADS131M0x::resetDevice(void){
   uint8_t x2 = 0;
   uint16_t ris = 0;
 
-  digitalWrite(csPin, LOW);
-  #ifndef NO_CS_DELAY
-    delayMicroseconds(1);
-  #endif
+  this->startSPI();
 
   x = spiPort->transfer(0x00);
   x2 = spiPort->transfer(0x11);
@@ -649,10 +663,7 @@ bool ADS131M0x::resetDevice(void){
 
   ris =  ((x << 8) | x2);
 
-  digitalWrite(csPin, HIGH);
-  #ifndef NO_CS_DELAY
-    delayMicroseconds(1);
-  #endif
+  this->endSPI();
 
   if(RSP_RESET_OK == ris){
     return true;
@@ -672,10 +683,8 @@ adcOutput ADS131M0x::readADC(void)
   int32_t aux;
   adcOutput res;
 
-  digitalWrite(csPin, LOW);
-#ifndef NO_CS_DELAY
-  delayMicroseconds(1);
-#endif
+  this->startSPI();
+
   x = spiPort->transfer(0x00);
   x2 = spiPort->transfer(0x00);
   spiPort->transfer(0x00);
@@ -745,9 +754,8 @@ adcOutput ADS131M0x::readADC(void)
   spiPort->transfer(0x00);
   spiPort->transfer(0x00);
   spiPort->transfer(0x00);
-#ifndef NO_CS_DELAY
-  delayMicroseconds(1);
-#endif
-  digitalWrite(csPin, HIGH);
+
+  this->endSPI();
+  
   return res;
 }
