@@ -264,7 +264,8 @@ public:
   static int32_t val32Ch0;
   ADS131M0x();
 
-  void begin(SPIClass *port, uint8_t clk_pin, uint8_t miso_pin, uint8_t mosi_pin, uint8_t cs_pin, uint8_t drdy_pin);
+  void begin(SPIClass *port, uint8_t cs_pin, uint8_t drdy_pin);
+
   int8_t isDataReadySoft(byte channel);
   bool isDataReady(void);
   void reset(uint8_t reset_pin); 

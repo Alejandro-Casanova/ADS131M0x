@@ -229,17 +229,14 @@ uint16_t ADS131M0x::isResetOK(void)
  * @param cs_pin
  * @param drdy_pin
  */
-void ADS131M0x::begin(SPIClass *port, uint8_t clk_pin, uint8_t miso_pin, uint8_t mosi_pin, uint8_t cs_pin, uint8_t drdy_pin)
+void ADS131M0x::begin(SPIClass *port, uint8_t cs_pin, uint8_t drdy_pin)
 {
   // Set pins up
   csPin = cs_pin;
   drdyPin = drdy_pin;
   spiPort = port;
   
-  spiPort->begin(clk_pin, miso_pin, mosi_pin, cs_pin); // SCLK, MISO, MOSI, SS
-  SPISettings settings(spiClockSpeed, SPI_MSBFIRST, SPI_MODE1);
-  spiPort->beginTransaction(settings);
-  delay(1);
+//   spiPort->begin(); // MUST be called externally
   
   pinMode(csPin, OUTPUT);
   digitalWrite(csPin,HIGH); // CS HIGH --> not selected
