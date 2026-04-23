@@ -1,8 +1,8 @@
 #ifndef ADS131M0x_h
 #define ADS131M0x_h
 
-#include "Arduino.h"
-#include "SPI.h"
+#include <Arduino.h>
+#include <SPI.h>
 
 // define for 2-channel version ADS131M02
 #define IS_M02
@@ -21,7 +21,7 @@ struct adcOutput
 #endif
 };
 
-#define DRDY_STATE_LOGIC_HIGH 0 // DEFAULS
+#define DRDY_STATE_LOGIC_HIGH 0 // DEFAULT
 #define DRDY_STATE_HI_Z 1
 
 #define POWER_MODE_VERY_LOW_POWER 0
@@ -37,7 +37,7 @@ struct adcOutput
 #define CHANNEL_PGA_64 6
 #define CHANNEL_PGA_128 7
 
-#define INPUT_CHANNEL_MUX_AIN0P_AIN0N 0 // Default
+#define INPUT_CHANNEL_MUX_AIN0P_AIN0N 0 // DEFAULT
 #define INPUT_CHANNEL_MUX_INPUT_SHORTED 1
 #define INPUT_CHANNEL_MUX_POSITIVE_DC_TEST_SIGNAL 2
 #define INPUT_CHANNEL_MUX_NEGATIVE_DC_TEST_SIGNAL 3
@@ -45,7 +45,7 @@ struct adcOutput
 #define OSR_128 0
 #define OSR_256 1
 #define OSR_512 2
-#define OSR_1024 3      // defaulT
+#define OSR_1024 3      // DEFAULT
 #define OSR_2018 4
 #define OSR_4096 5
 #define OSR_8192 6
@@ -59,7 +59,7 @@ struct adcOutput
 #define CMD_WAKEUP 0x0033
 #define CMD_LOCK 0x0555
 #define CMD_UNLOCK 0x0655
-#define CMD_READ_REG 0xA000 // 101a aaaa annn nnnn   a=adress  n=num  regis-1
+#define CMD_READ_REG 0xA000 // 101a aaaa annn nnnn   a=address  n=num  regis-1
 #define CMD_WRITE_REG 0x6000
 
 // Responses
@@ -251,8 +251,8 @@ struct adcOutput
 #define SPI_MASTER_DUMMY16 0xFFFF
 #define SPI_MASTER_DUMMY32 0xFFFFFFFF
 
-// by JG: not testet !!
-#define MACROVALCALC(val,offset, factor, divisor) (((val-offset)*factor/divisor))
+// by JG: not tested !!
+#define MACROVALCALC(val,offset, factor, divisor) (((val - offset) * factor / divisor))
 
 /**
  * @brief Arduino class for the TI ADS131M02 and ADS131M04 ADC-converter with SPI Interface
