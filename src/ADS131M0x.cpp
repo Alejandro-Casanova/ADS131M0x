@@ -611,15 +611,14 @@ adcOutput ADS131M0x::readfastCh0(void)
   {
     res.ch0 = aux;
   }
-  
-  spiPort->write16(0x00);
-  spiPort->write(0x00);
+  spiPort->transfer16(0x00);
+  spiPort->transfer(0x00);
 
-  spiPort->write16(0x00);
-  spiPort->write(0x00);
+  spiPort->transfer16(0x00);
+  spiPort->transfer(0x00);
 
-  spiPort->write16(0x00);
-  spiPort->write(0x00);
+  spiPort->transfer16(0x00);
+  spiPort->transfer(0x00);
   
   /* slower
   spiPort->transfer(0x00);
