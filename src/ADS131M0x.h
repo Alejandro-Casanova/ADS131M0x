@@ -261,7 +261,7 @@ struct adcOutput
 class ADS131M0x
 {
 public:
-  static int32_t val32Ch0;
+
   ADS131M0x();
 
   void begin(SPIClass *port, uint8_t cs_pin, uint8_t drdy_pin);
@@ -286,7 +286,7 @@ public:
 
   uint16_t isResetOK(void);
   adcOutput readADC(void);
-  int32_t readfastCh0(void);
+  adcOutput readfastCh0(void);
 
   void setClockSpeed(uint32_t cspeed);
 

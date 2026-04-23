@@ -9,8 +9,6 @@
 //INFO Version for ADS131M02
 #endif
 
-int32_t ADS131M0x::val32Ch0 = 0x7FFFFF;
-
 /**
  * @brief Construct a new ADS131M0x::ADS131M0x object
  * 
@@ -584,7 +582,7 @@ bool ADS131M0x::isDataReady()
 /// @brief Read only CH0 fast
 /// @param  
 /// @return ch0 (int32)
-int32_t ADS131M0x::readfastCh0(void)
+adcOutput ADS131M0x::readfastCh0(void)
 {
   uint8_t x = 0;
   uint8_t x2 = 0;
@@ -607,11 +605,11 @@ int32_t ADS131M0x::readfastCh0(void)
   aux = (((x << 16) | (x2 << 8) | x3) & 0x00FFFFFF);
   if (aux > 0x7FFFFF)
   {
-    val32Ch0 = ((~(aux)&0x00FFFFFF) + 1) * -1;
+    res.ch0 = ((~(aux)&0x00FFFFFF) + 1) * -1;
   }
   else
   {
-    val32Ch0 = aux;
+    res.ch0 = aux;
   }
   
   spiPort->write16(0x00);
@@ -641,7 +639,7 @@ int32_t ADS131M0x::readfastCh0(void)
   //NOP();
   this->endSPI();
 
-  return val32Ch0;
+  return res;
 }
 
 /// @brief reset device from register, read CAP 8.5.1.10 Commands from official documentation  
@@ -753,6 +751,6 @@ adcOutput ADS131M0x::readADC(void)
   spiPort->transfer(0x00);
 
   this->endSPI();
-  
+
   return res;
 }
