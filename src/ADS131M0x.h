@@ -258,15 +258,17 @@ class ADS131M0x
 {
 public:
 
-  ADS131M0x();
+  ADS131M0x(
+    const uint8_t cs_pin,
+    const uint8_t drdy_pin,
+    SPIClass *const port,
+    const uint32_t spi_clock_speed = DEFAULT_SPI_CLOCK);
+  virtual ~ADS131M0x() = default;
 
-  void begin(SPIClass *port, uint8_t cs_pin, uint8_t drdy_pin);
+  void begin();
 
-  int8_t isDataReadySoft(byte channel);
-  bool isDataReady(void);
-  void reset(uint8_t reset_pin); 
-  bool isResetStatus(void);
-  bool isLockSPI(void);
+  adcOutput readADC(void);
+
   bool setDrdyFormat(uint8_t drdyFormat);
   bool setDrdyStateWhenUnavailable(uint8_t drdyState);
   bool setPowerMode(uint8_t powerMode);
@@ -278,26 +280,42 @@ public:
   bool setChannelOffsetCalibration(uint8_t channel, int32_t offset);
   bool setChannelGainCalibration(uint8_t channel, uint32_t gain);
   bool setOsr(uint16_t osr);
+
+  uint8_t getChannelCount();
+
+  int8_t isDataReadySoft(byte channel);
+  bool isDataReady(void);
+  void reset(uint8_t reset_pin);
   bool resetDevice(void);
-
   uint16_t isResetOK(void);
-  adcOutput readADC(void);
-  adcOutput readfastCh0(void);
+  bool isResetStatus(void);
+  bool isLockSPI(void);
 
-  void setClockSpeed(uint32_t cspeed);
+  void setClockSpeed(const uint32_t cSpeed);
+
+  // Make non-copyable and non-movable
+  ADS131M0x(const ADS131M0x &) = delete;
+  ADS131M0x &operator=(const ADS131M0x &) = delete;
+  ADS131M0x(ADS131M0x &&) = delete;
+  ADS131M0x &operator=(ADS131M0x &&) = delete;
 
 private:
-  uint8_t writeRegister(uint8_t address, uint16_t value);
-  void writeRegisterMasked(uint8_t address, uint16_t value, uint16_t mask);
-  uint16_t readRegister(uint8_t address);
+  static constexpr uint32_t DEFAULT_SPI_CLOCK = 1000000;  // default 1MHz
 
-  void startSPI();
-  void endSPI();
+  const uint8_t CS_PIN;
+  const uint8_t DRDY_PIN;
 
-  uint8_t csPin;
-  uint8_t drdyPin;
- 
-  SPIClass *spiPort;
-  uint32_t spiClockSpeed = 1000000; // default 1MHz SPI-clock
+  void startSPI() const;
+  void endSPI() const;
+
+  uint8_t writeRegister(const uint8_t address, const uint16_t value);
+  void writeRegisterMasked(const uint8_t address, const uint16_t value, const uint16_t mask);
+  uint16_t readRegister(const uint8_t address);
+
+  int32_t convertBytesToInt32(const uint8_t msb, const uint8_t mid, const uint8_t lsb);
+
+  uint32_t spiClockSpeed;
+  SPIClass *const spiPort;
 };
-#endif
+
+#endif  // ADS131M0x_h
