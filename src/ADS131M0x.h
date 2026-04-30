@@ -8,7 +8,7 @@
 #define IS_M02
 
 // no delay after CS-active at adc_read
-// #define NO_CS_DELAY 
+#define NO_CS_DELAY
 
 struct adcOutput
 {
