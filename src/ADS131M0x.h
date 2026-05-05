@@ -74,6 +74,7 @@ struct adcOutput
 // read/write - 1 (e.g. 0 for 1 byte, 1 for 2 bytes, etc.)
 // In the write response, "n" is the number of bytes actually written,
 // which may be different from the number of bytes requested in the command
+#define CMDMASK_RWREG_RESPONSE 0xE000
 #define CMDMASK_RWREG_ADDRESS 0x1F80
 #define CMDMASK_RWREG_NBYTES 0x007F
 
@@ -84,6 +85,8 @@ struct adcOutput
 #define RSP_RESET_OK 0xFF24
 #endif
 #define RSP_RESET_NOK 0x0011
+
+#define RSP_WREG_OK 0x4000
 
 // ----------------------------------------------------------------------------
 
@@ -248,6 +251,13 @@ public:
 
 private:
   static constexpr uint32_t DEFAULT_SPI_CLOCK = 1000000;  // default 1MHz
+#ifndef IS_M02
+  // 1 word (status) + 4 (channels) + 1 word (crc) = 18 bytes (3 bytes per word)
+  static constexpr uint8_t BYTES_IN_FRAME = 18;
+#else
+  // 1 word (status) + 2 (channels) + 1 word (crc) = 12 bytes (3 bytes per word)
+  static constexpr uint8_t BYTES_IN_FRAME = 12;
+#endif
 
   const uint8_t CS_PIN;
   const uint8_t DRDY_PIN;
@@ -256,7 +266,7 @@ private:
   void endSPI() const;
 
   uint8_t writeRegister(const uint8_t address, const uint16_t value);
-  void writeRegisterMasked(const uint8_t address, const uint16_t value, const uint16_t mask);
+  uint8_t writeRegisterMasked(const uint8_t address, const uint16_t value, const uint16_t mask);
   uint16_t readRegister(const uint8_t address);
 
   int32_t convertBytesToInt32(const uint8_t msb, const uint8_t mid, const uint8_t lsb);
