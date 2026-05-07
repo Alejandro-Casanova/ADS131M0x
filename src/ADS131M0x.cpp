@@ -32,6 +32,10 @@ void ADS131M0x::begin()
   pinMode(CS_PIN, OUTPUT);
   digitalWrite(CS_PIN, HIGH);  // CS HIGH --> not selected
   pinMode(DRDY_PIN, INPUT);    // DRDY Input
+
+  // Initialize SPI in case it is not done externally
+  // WARNING: SPI implementation should handle double initialization gracefully
+  spiPort->begin();
 }
 
 /**
@@ -412,11 +416,11 @@ bool ADS131M0x::setChannelGainCalibration(uint8_t channel, uint32_t gain)
 /// @return
 bool ADS131M0x::isDataReady()
 {
-  if (digitalRead(DRDY_PIN) == HIGH)
+  if (LOW == digitalRead(DRDY_PIN))
   {
-    return false;
+    return true;
   }
-  return true;
+  return false;
 }
 
 /**

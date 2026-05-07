@@ -250,7 +250,7 @@ public:
   ADS131M0x &operator=(ADS131M0x &&) = delete;
 
 private:
-  static constexpr uint32_t DEFAULT_SPI_CLOCK = 1000000;  // default 1MHz
+  static constexpr uint32_t DEFAULT_SPI_CLOCK = UINT32_C(1'000'000);  // 1MHz
 #ifndef IS_M02
   // 1 word (status) + 4 (channels) + 1 word (crc) = 18 bytes (3 bytes per word)
   static constexpr uint8_t BYTES_IN_FRAME = 18;
