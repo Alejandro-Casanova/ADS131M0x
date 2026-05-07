@@ -4,6 +4,8 @@
 #include <Arduino.h>
 #include <SPI.h>
 
+#include <array>
+
 // define for 2-channel version ADS131M02
 #define IS_M02
 
@@ -216,8 +218,9 @@ public:
   virtual ~ADS131M0x() = default;
 
   void begin();
+  bool disableAllChannels();
 
-  adcOutput readADC(void);
+  bool readADC(adcOutput &adcOut);
 
   bool setDrdyFormat(uint8_t drdyFormat);
   bool setDrdyStateWhenUnavailable(uint8_t drdyState);
@@ -231,13 +234,12 @@ public:
   bool setChannelGainCalibration(uint8_t channel, uint32_t gain);
   bool setOsr(uint16_t osr);
 
-  uint8_t getChannelCount();
+  bool getChannelCount(uint8_t &numChannelsOut);
 
-  int8_t isDataReadySoft(byte channel);
+  bool isDataReadySoft(byte channel);
   bool isDataReady(void);
   void reset(uint8_t reset_pin);
-  bool resetDevice(void);
-  uint16_t isResetOK(void);
+  bool resetSoft(void);
   bool isResetStatus(void);
   bool isLockSPI(void);
 
@@ -251,13 +253,19 @@ public:
 
 private:
   static constexpr uint32_t DEFAULT_SPI_CLOCK = UINT32_C(1'000'000);  // 1MHz
+  static constexpr uint8_t BYTES_IN_WORD = 3;
 #ifndef IS_M02
   // 1 word (status) + 4 (channels) + 1 word (crc) = 18 bytes (3 bytes per word)
-  static constexpr uint8_t BYTES_IN_FRAME = 18;
+  static constexpr uint8_t WORDS_IN_FRAME = 6;
 #else
   // 1 word (status) + 2 (channels) + 1 word (crc) = 12 bytes (3 bytes per word)
-  static constexpr uint8_t BYTES_IN_FRAME = 12;
+  static constexpr uint8_t WORDS_IN_FRAME = 4;
 #endif
+  static constexpr uint8_t BYTES_IN_FRAME = WORDS_IN_FRAME * BYTES_IN_WORD;
+  static constexpr uint8_t CRC_FRAME_OFFSET = BYTES_IN_FRAME - BYTES_IN_WORD;
+
+  // Alias for the SPI frame buffer type
+  using FrameType = std::array<uint8_t, BYTES_IN_FRAME>;
 
   const uint8_t CS_PIN;
   const uint8_t DRDY_PIN;
@@ -265,11 +273,29 @@ private:
   void startSPI() const;
   void endSPI() const;
 
-  uint8_t writeRegister(const uint8_t address, const uint16_t value);
-  uint8_t writeRegisterMasked(const uint8_t address, const uint16_t value, const uint16_t mask);
-  uint16_t readRegister(const uint8_t address);
+  bool writeRegister(const uint8_t address, const uint16_t value);
+  bool writeRegisterMasked(
+    const uint8_t address, const uint16_t value, const uint16_t mask);
+  bool readRegister(const uint8_t address, uint16_t &valueOut);
 
-  int32_t convertBytesToInt32(const uint8_t msb, const uint8_t mid, const uint8_t lsb);
+  bool processFullFrame(FrameType &frameOut);
+
+  // Utility functions for byte conversion
+  int32_t bytesToInt32(
+    const uint8_t msb, const uint8_t mid, const uint8_t lsb);
+  uint16_t bytesToUint16(const uint8_t msb, const uint8_t lsb)
+  {
+    return (static_cast<uint16_t>(msb) << 8) | static_cast<uint16_t>(lsb);
+  }
+  uint8_t extractMSB(const uint16_t value)
+  {
+    return static_cast<uint8_t>((value >> 8) & UINT8_C(0xFF));
+  }
+
+  uint8_t extractLSB(const uint16_t value)
+  {
+    return static_cast<uint8_t>(value & UINT8_C(0xFF));
+  }
 
   uint32_t spiClockSpeed;
   SPIClass *const spiPort;

@@ -1,4 +1,5 @@
 #include "ADS131M0x.h"
+#include "CRC.h"
 
 #include <Arduino.h>
 #include <SPI.h>
@@ -38,6 +39,17 @@ void ADS131M0x::begin()
   spiPort->begin();
 }
 
+bool ADS131M0x::disableAllChannels()
+{
+  static constexpr uint16_t ALL_CHANNELS_MASK = 
+    REGMASK_CLOCK_CH0_EN | REGMASK_CLOCK_CH1_EN
+#ifndef IS_M02
+    | REGMASK_CLOCK_CH2_EN | REGMASK_CLOCK_CH3_EN
+#endif
+    ;
+  return writeRegisterMasked(REG_CLOCK, UINT16_C(0x00), ALL_CHANNELS_MASK);
+}
+
 /**
  * @brief Set the SPI clock speed that will be used for communication with the 
  * ADS131M0x device.
@@ -66,44 +78,37 @@ void ADS131M0x::reset(uint8_t reset_pin)
 }
 
 /**
- * @brief read status cmd-register
+ * @brief Reset device from register, read CAP 8.5.1.10 Commands from official 
+ * documentation
  * 
- * @return uint16_t 
+ * @retval true 
+ * The device responded with the RSP_RESET_OK message
+ * @retval false 
+ * The device did not respond with the RSP_RESET_OK message
  */
-uint16_t ADS131M0x::isResetOK(void)
+bool ADS131M0x::resetSoft(void)
 {
-  return (readRegister(CMD_RESET));
-}
+  // TODO: review implementation. Full frame must be sent so reset is latched
+  uint8_t x = 0;
+  uint8_t x2 = 0;
+  uint16_t ris = 0;
 
-/**
- * @brief software test of ADC data is ready
- * 
- * @param channel 
- * @return int8_t 
- */
-int8_t ADS131M0x::isDataReadySoft(byte channel)
-{
-  if (channel == 0)
-  {
-    return (readRegister(REG_STATUS) & REGMASK_STATUS_DRDY0);
-  }
-  else if (channel == 1)
-  {
-    return (readRegister(REG_STATUS) & REGMASK_STATUS_DRDY1);
-  }
-#ifndef IS_M02
-  else if (channel == 2)
-  {
-    return (readRegister(REG_STATUS) & REGMASK_STATUS_DRDY2);
-  }
-  else if (channel == 3)
-  {
-    return (readRegister(REG_STATUS) & REGMASK_STATUS_DRDY3);
-  }
-#endif
-  return -1;
-}
+  this->startSPI();
 
+  x = spiPort->transfer(0x00);
+  x2 = spiPort->transfer(0x11);
+  spiPort->transfer(0x00);
+
+  ris = ((x << 8) | x2);
+
+  this->endSPI();
+
+  if (RSP_RESET_OK == ris)
+  {
+    return true;
+  }
+  return false;
+}
 
 /**
  * @brief read reset status (see datasheet)
@@ -113,7 +118,50 @@ int8_t ADS131M0x::isDataReadySoft(byte channel)
  */
 bool ADS131M0x::isResetStatus(void)
 {
-  return (readRegister(REG_STATUS) & REGMASK_STATUS_RESET);
+  uint16_t statusRegister;
+  if (!readRegister(REG_STATUS, statusRegister))
+  {
+    return false;  // Return false if the register read fails
+  }
+
+  return (statusRegister & REGMASK_STATUS_RESET);
+}
+
+/**
+ * @brief software test of ADC data is ready
+ * 
+ * @param channel 
+ * @return bool 
+ */
+bool ADS131M0x::isDataReadySoft(byte channel)
+{
+  uint16_t statusRegister;
+  if (!readRegister(REG_STATUS, statusRegister))
+  {
+    return false;  // Return false if the register read fails
+  }
+  
+  // Check the appropriate DRDY bit based on the channel number
+  if (channel == 0)
+  {
+    return (statusRegister & REGMASK_STATUS_DRDY0);
+  }
+  else if (channel == 1)
+  {
+    return (statusRegister & REGMASK_STATUS_DRDY1);
+  }
+#ifndef IS_M02
+  else if (channel == 2)
+  {
+    return (statusRegister & REGMASK_STATUS_DRDY2);
+  }
+  else if (channel == 3)
+  {
+    return (statusRegister & REGMASK_STATUS_DRDY3);
+  }
+#endif
+
+  return false;  // Return false for invalid channel numbers
 }
 
 /**
@@ -124,7 +172,13 @@ bool ADS131M0x::isResetStatus(void)
  */
 bool ADS131M0x::isLockSPI(void)
 {
-  return (readRegister(REG_STATUS) & REGMASK_STATUS_LOCK);
+  uint16_t statusRegister;
+  if (!readRegister(REG_STATUS, statusRegister))
+  {
+    return false;  // Return false if the register read fails
+  }
+
+  return (statusRegister & REGMASK_STATUS_LOCK);
 }
 
 /**
@@ -201,16 +255,21 @@ bool ADS131M0x::setOsr(uint16_t osr)
     return false;
   }
 
-  const uint8_t regs_written = 
-    writeRegisterMasked(REG_CLOCK, osr << 2, REGMASK_CLOCK_OSR);
-
-   return (1 == regs_written);
+  return writeRegisterMasked(REG_CLOCK, osr << 2, REGMASK_CLOCK_OSR);
 }
 
-uint8_t ADS131M0x::getChannelCount()
+bool ADS131M0x::getChannelCount(uint8_t &numChannelsOut)
 {
-  return static_cast<uint8_t>(
-    (readRegister(REG_ID) & REGMASK_ID_CHANCNT) >> 8);
+  uint16_t id_reg;
+  if (!readRegister(REG_ID, id_reg))
+  {
+    return false;  // Return false if the register read fails
+  }
+
+  numChannelsOut = static_cast<uint8_t>(
+    (id_reg & REGMASK_ID_CHANCNT) >> 8);
+
+  return true;
 }
 
 /**
@@ -223,37 +282,21 @@ uint8_t ADS131M0x::getChannelCount()
  */
 bool ADS131M0x::setChannelEnable(uint8_t channel, uint16_t enable)
 {
-  if (channel > 3)
+  switch (channel)
   {
-    return false;
-  }
-  if (channel == 0)
-  {
-    uint8_t regs_written = 
-      writeRegisterMasked(REG_CLOCK, enable << 8, REGMASK_CLOCK_CH0_EN);
-    return (1 == regs_written);
-  }
-  else if (channel == 1)
-  {
-    uint8_t regs_written = 
-      writeRegisterMasked(REG_CLOCK, enable << 9, REGMASK_CLOCK_CH1_EN);
-    return (1 == regs_written);
-  }
+    case 0:
+      return writeRegisterMasked(REG_CLOCK, enable << 8, REGMASK_CLOCK_CH0_EN);
+    case 1:
+      return writeRegisterMasked(REG_CLOCK, enable << 9, REGMASK_CLOCK_CH1_EN);
 #ifndef IS_M02
-  else if (channel == 2)
-  {
-    uint8_t regs_written = 
-      writeRegisterMasked(REG_CLOCK, enable << 10, REGMASK_CLOCK_CH2_EN);
-    return (1 == regs_written);
-  }
-  else if (channel == 3)
-  {
-    uint8_t regs_written = 
-      writeRegisterMasked(REG_CLOCK, enable << 11, REGMASK_CLOCK_CH3_EN);
-    return (1 == regs_written);
-  }
+    case 2:
+      return writeRegisterMasked(REG_CLOCK, enable << 10, REGMASK_CLOCK_CH2_EN);
+    case 3:
+      return writeRegisterMasked(REG_CLOCK, enable << 11, REGMASK_CLOCK_CH3_EN);
 #endif
-  return false;
+    default:
+      return false;
+  }
 }
 
 /**
@@ -266,29 +309,21 @@ bool ADS131M0x::setChannelEnable(uint8_t channel, uint16_t enable)
  */
 bool ADS131M0x::setChannelPGA(uint8_t channel, uint16_t pga)
 {
-  if (channel == 0)
+  switch (channel)
   {
-    uint8_t regs_written = writeRegisterMasked(REG_GAIN, pga, REGMASK_GAIN_PGAGAIN0);
-    return (1 == regs_written);
-  }
-  else if (channel == 1)
-  {
-    uint8_t regs_written = writeRegisterMasked(REG_GAIN, pga << 4, REGMASK_GAIN_PGAGAIN1);
-    return (1 == regs_written);
-  }
+    case 0:
+      return writeRegisterMasked(REG_GAIN, pga, REGMASK_GAIN_PGAGAIN0);
+    case 1:
+      return writeRegisterMasked(REG_GAIN, pga << 4, REGMASK_GAIN_PGAGAIN1);
 #ifndef IS_M02
-  else if (channel == 2)
-  {
-    uint8_t regs_written = writeRegisterMasked(REG_GAIN, pga << 8, REGMASK_GAIN_PGAGAIN2);
-    return (1 == regs_written);
-  }
-  else if (channel == 3)
-  {
-    uint8_t regs_written = writeRegisterMasked(REG_GAIN, pga << 12, REGMASK_GAIN_PGAGAIN3);
-    return (1 == regs_written);
-  }
+    case 2:
+      return writeRegisterMasked(REG_GAIN, pga << 8, REGMASK_GAIN_PGAGAIN2);
+    case 3:
+      return writeRegisterMasked(REG_GAIN, pga << 12, REGMASK_GAIN_PGAGAIN3);
 #endif
-  return false;
+    default:
+      return false;
+  }
 }
 
 /// @brief Set global Chop (see datasheet)
@@ -424,78 +459,42 @@ bool ADS131M0x::isDataReady()
 }
 
 /**
- * @brief Reset device from register, read CAP 8.5.1.10 Commands from official 
- * documentation
- * 
- * @retval true 
- * The device responded with the RSP_RESET_OK message
- * @retval false 
- * The device did not respond with the RSP_RESET_OK message
- */
-bool ADS131M0x::resetDevice(void)
-{
-  uint8_t x = 0;
-  uint8_t x2 = 0;
-  uint16_t ris = 0;
-
-  this->startSPI();
-
-  x = spiPort->transfer(0x00);
-  x2 = spiPort->transfer(0x11);
-  spiPort->transfer(0x00);
-
-  ris = ((x << 8) | x2);
-
-  this->endSPI();
-
-  if (RSP_RESET_OK == ris)
-  {
-    return true;
-  }
-  return false;
-}
-
-/**
  * @brief Read ADC port (all Ports)
  * 
+ * @param adcOut Reference to adcOutput structure to store the read values
+ * 
+ * @return true if the read operation was successful, false otherwise
  */
-adcOutput ADS131M0x::readADC(void)
+bool ADS131M0x::readADC(adcOutput &adcOut)
 {
-  // Each transaction is 4 24-bit words
-  uint8_t buffer[BYTES_IN_FRAME] = { 0 };
+  FrameType buffer;
 
-  this->startSPI();
+  if (!processFullFrame(buffer))
+  {
+    // Return false if frame processing fails (probably due to CRC failure)
+    return false;
+  }
 
-  spiPort->transfer(buffer, sizeof(buffer));
-
-  this->endSPI();
-
-  adcOutput res;
+  adcOut = adcOutput{}; // Initialize adcOut with default values
 
   // Status is the first 16 bits of the first 24-bit word
-  res.status = ((buffer[0] << 8) | buffer[1]);
+  adcOut.status = this->bytesToUint16(buffer[0], buffer[1]);
 
   // Channel 0 Data is the second word
-  res.ch0 = this->convertBytesToInt32(buffer[3], buffer[4], buffer[5]);
+  adcOut.ch0 = this->bytesToInt32(buffer[3], buffer[4], buffer[5]);
 
   // Channel 1 Data is the third word
-  res.ch1 = this->convertBytesToInt32(buffer[6], buffer[7], buffer[8]);
+  adcOut.ch1 = this->bytesToInt32(buffer[6], buffer[7], buffer[8]);
 
-#ifdef IS_M02
-  const uint16_t crc = (buffer[9] << 8) | buffer[10];
-  (void)crc; // TODO: validate CRC
-#else
+#ifndef IS_M02
   // Channel 2 Data is the fourth word
-  res.ch2 = this->convertBytesToInt32(buffer[9], buffer[10], buffer[11]);
+  adcOut.ch2 = this->bytesToInt32(buffer[9], buffer[10], buffer[11]);
 
   // Channel 3 Data is the fifth word
-  res.ch3 = this->convertBytesToInt32(buffer[12], buffer[13], buffer[14]);
-
-  const uint16_t crc = (buffer[15] << 8) | buffer[16];
-  (void)crc; // TODO: validate CRC
+  adcOut.ch3 = this->bytesToInt32(buffer[12], buffer[13], buffer[14]);
 #endif
 
-  return res;
+  return true;
 }
 
 void ADS131M0x::startSPI() const
@@ -519,74 +518,65 @@ void ADS131M0x::endSPI() const
 /**
  * @brief Write to ADC131M01 or ADC131M04 register
  * 
- * @param address 
- * @param value 
- * @return uint8_t 
+ * @param address Register address to write to
+ * @param value Value to write to the register
+ * @return true if the write operation was successful, false otherwise 
  */
-uint8_t ADS131M0x::writeRegister(const uint8_t address, const uint16_t value)
+bool ADS131M0x::writeRegister(const uint8_t address, const uint16_t value)
 {
-  static constexpr uint8_t NUM_REGISTERS = UINT8_C(1); // Single register write
+  static constexpr uint8_t NUM_REGISTERS = UINT8_C(1);  // Single register write
   const uint16_t cmd = (CMD_WRITE_REG) | (address << 7) | (NUM_REGISTERS - 1);
 
-  // Two frames are needed. Write command is sent in the first frame, and the 
-  // response is received in the second frame. 
-  uint8_t buffer[2 * BYTES_IN_FRAME] = { 0 };
+  // Two frames are needed. Write command is sent in the first frame, and the
+  // response is received in the second frame.
+
+  // Short frame (2 words) will be used for the write command.
+  uint8_t cmdBuff[2 * BYTES_IN_WORD] = { 0 };
 
   // Append the command to the beginning of the buffer
-  buffer[0] = static_cast<uint8_t>((cmd >> 8) & 0xFF);
-  buffer[1] = static_cast<uint8_t>(cmd & 0xFF);
+  cmdBuff[0] = this->extractMSB(cmd);
+  cmdBuff[1] = this->extractLSB(cmd);
 
   // Add the value to write to the buffer
-  buffer[3] = static_cast<uint8_t>((value >> 8) & 0xFF);
-  buffer[4] = static_cast<uint8_t>(value & 0xFF);
+  cmdBuff[3] = this->extractMSB(value);
+  cmdBuff[4] = this->extractLSB(value);
 
   this->startSPI();
-
-  spiPort->transfer(buffer, sizeof(buffer));
-
+  spiPort->transfer(cmdBuff, sizeof(cmdBuff));
   this->endSPI();
 
   // Status is the first 16 bits of the first 24-bit word
-  const uint16_t status = ((buffer[0] << 8) | buffer[1]);
-  (void)status; // TODO: check status
+  const uint16_t status = this->bytesToUint16(cmdBuff[0], cmdBuff[1]);
+  (void)status;  // TODO: check status...?
 
-#ifdef IS_M02
-  const uint16_t first_crc = (buffer[9] << 8) | buffer[10];
-  (void)first_crc; // TODO: validate CRC
-
-  const uint16_t response = (buffer[12] << 8) | buffer[13];
-
-  const uint16_t second_crc = (buffer[21] << 8) | buffer[22];
-  (void)second_crc; // TODO: validate CRC
-#else
-  const uint16_t first_crc = (buffer[15] << 8) | buffer[16];
-  (void)first_crc; // TODO: validate CRC
-
-  const uint16_t response = (buffer[18] << 8) | buffer[19];
-
-  const uint16_t second_crc = (buffer[27] << 8) | buffer[28];
-  (void)second_crc; // TODO: validate CRC
-#endif
-
-  const bool write_success = (response & CMDMASK_RWREG_RESPONSE) == RSP_WREG_OK;
-
-  if (!write_success)
+  // Process full frame for the response, in order to include CRC validation.
+  FrameType rspBuff;
+  if (!processFullFrame(rspBuff))
   {
-    return 0;
+    return false; // Failure (probably CRC failure)
   }
 
-  const uint8_t addressRcv = 
+  const uint16_t response = this->bytesToUint16(rspBuff[0], rspBuff[1]);
+
+  // Check for response ok code
+  if (RSP_WREG_OK != (response & CMDMASK_RWREG_RESPONSE))
+  {
+    return false;
+  }
+
+  // Response code is ok, now check if the address in the response matches the
+  // requested address and if the number of bytes matches the expected value.
+  const uint8_t addressRcv =
     static_cast<uint8_t>((response & CMDMASK_RWREG_ADDRESS) >> 7);
-  const uint8_t bytesRcv = 
+  const uint8_t bytesRcv =
     static_cast<uint8_t>(response & CMDMASK_RWREG_NBYTES) + 1;
 
-  if (addressRcv == address)
+  if (addressRcv != address || NUM_REGISTERS != bytesRcv)
   {
-    return bytesRcv;
+    return false;
   }
 
-  // Address mismatch, write failed
-  return 0;
+  return true; // Success!
 }
 
 /**
@@ -599,74 +589,104 @@ uint8_t ADS131M0x::writeRegister(const uint8_t address, const uint16_t value)
  * 
  * @return Number of registers successfully written. Should be 1.
  */
-uint8_t ADS131M0x::writeRegisterMasked(const uint8_t address, const uint16_t value, const uint16_t mask)
+bool ADS131M0x::writeRegisterMasked(
+  const uint8_t address, const uint16_t value, const uint16_t mask)
 {
-  //Read the current content of the register
-  uint16_t register_contents = readRegister(address);
-  // Change the mask bit by bit (it remains 1 in the bits that must not be touched and 0 in the bits to be modified)
-  // An AND is performed with the current content of the record. "0" remain in the part to be modified
-  register_contents &= ~mask;
-  // OR is made with the value to load in the registry. value must be in the correct position (shift)
-  register_contents |= (value & mask);
-  return writeRegister(address, register_contents);
+  // Read the current content of the register
+  uint16_t registerContents = 0;
+  if (!readRegister(address, registerContents))
+  {
+    return false; // Failure to read the register
+  }
+
+  // Change the mask bit by bit (it remains 1 in the bits that must not be 
+  // touched and 0 in the bits to be modified). An AND is performed with the 
+  // current content of the record. "0" remain in the part to be modified
+  registerContents &= ~mask;
+
+  // OR is made with the value to load in the registry. value must be in the 
+  // correct position (shift)
+  registerContents |= (value & mask);
+
+  return writeRegister(address, registerContents);
 }
 
 /**
- * @brief 
+ * @brief Read the value of a single register, specified by the address 
+ *  parameter.
  *
- * @param address
- * @return uint16_t
+ * @param address The address of the register to read
+ * @param valueOut Reference to a variable where the read value will be stored
+ * @return true if the read operation was successful, false otherwise
  */
-uint16_t ADS131M0x::readRegister(const uint8_t address)
+bool ADS131M0x::readRegister(const uint8_t address, uint16_t &valueOut)
 {
-  static constexpr uint8_t NUM_REGISTERS = UINT8_C(1); // Single register read
+  static constexpr uint8_t NUM_REGISTERS = UINT8_C(1);  // Single register read
   const uint16_t cmd = CMD_READ_REG | (address << 7) | (NUM_REGISTERS - 1);
 
-  // Two frames are needed. Read command is sent in the first frame, and the 
-  // response is received in the second frame. 
-  uint8_t buffer[2 * BYTES_IN_FRAME] = { 0 };
+  // Two frames are needed. Write command is sent in the first frame, and the
+  // response is received in the second frame.
+
+  // Short frame (just 1 word) will be used for the read command.
+  uint8_t cmdBuff[BYTES_IN_WORD] = { 0 };
 
   // Append the command to the beginning of the buffer
-  buffer[0] = static_cast<uint8_t>((cmd >> 8) & 0xFF);
-  buffer[1] = static_cast<uint8_t>(cmd & 0xFF);
+  cmdBuff[0] = this->extractMSB(cmd);
+  cmdBuff[1] = this->extractLSB(cmd);
 
   this->startSPI();
-
-  spiPort->transfer(buffer, sizeof(buffer));
-
+  spiPort->transfer(cmdBuff, sizeof(cmdBuff));
   this->endSPI();
 
   // Status is the first 16 bits of the first 24-bit word
-  const uint16_t status = ((buffer[0] << 8) | buffer[1]);
-  (void)status; // TODO: check status
+  const uint16_t status = this->bytesToUint16(cmdBuff[0], cmdBuff[1]);
+  (void)status;  // TODO: check status...?
 
-#ifdef IS_M02
-  const uint16_t first_crc = (buffer[9] << 8) | buffer[10];
-  (void)first_crc; // TODO: validate CRC
+  // Process full frame for the response, in order to include CRC validation.
+  FrameType rspBuff;
+  if (!processFullFrame(rspBuff))
+  {
+    return false; // Failure (probably CRC failure)
+  }
 
-  const uint16_t response = (buffer[12] << 8) | buffer[13];
+  valueOut = this->bytesToUint16(rspBuff[0], rspBuff[1]);
 
-  const uint16_t second_crc = (buffer[21] << 8) | buffer[22];
-  (void)second_crc; // TODO: validate CRC
-#else
-  const uint16_t first_crc = (buffer[15] << 8) | buffer[16];
-  (void)first_crc; // TODO: validate CRC
-
-  const uint16_t response = (buffer[18] << 8) | buffer[19];
-
-  const uint16_t second_crc = (buffer[27] << 8) | buffer[28];
-  (void)second_crc; // TODO: validate CRC
-#endif
-
-  return response;
+  return true; // Success!
 }
 
-int32_t ADS131M0x::convertBytesToInt32(
+bool ADS131M0x::processFullFrame(FrameType &frameOut)
+{
+  // Set frame to all zeros before sending (NULL command)
+  frameOut.fill(static_cast<FrameType::value_type>(0));
+
+  this->startSPI();
+  spiPort->transfer(frameOut.data(), frameOut.size());
+  this->endSPI();
+
+  // Response is now in frameOut. Next, validate the CRC.
+
+  const uint16_t crcRcv = this->bytesToUint16(
+    frameOut[CRC_FRAME_OFFSET], frameOut[CRC_FRAME_OFFSET + 1]);
+
+  static_assert(
+    std::tuple_size<FrameType>::value > CRC_FRAME_OFFSET, 
+    "CRC frame offset is out of bounds of the response buffer");
+  const uint16_t crcComputed = ComputeCrc(frameOut.data(), CRC_FRAME_OFFSET);
+
+  if (crcRcv != crcComputed)
+  {
+    return false;
+  }
+
+  return true; // CRC is valid, frame is processed successfully
+}
+
+int32_t ADS131M0x::bytesToInt32(
   const uint8_t msb, const uint8_t mid, const uint8_t lsb)
 {
-  uint32_t value = 
-    (static_cast<uint32_t>(msb) << 16) |
-    (static_cast<uint32_t>(mid) << 8) |
+  uint32_t value =
+    (static_cast<uint32_t>(msb) << 16) | 
+    (static_cast<uint32_t>(mid) << 8) | 
     static_cast<uint32_t>(lsb);
 
   // Check if the value is negative (if the most significant bit is set)
